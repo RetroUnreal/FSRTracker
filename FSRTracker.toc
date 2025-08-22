@@ -1,6 +1,7 @@
 ## Interface: 30300
 ## Title: FSRTracker
 ## Notes: Tracks the 5-second rule and mana regen ticks.
-## Author: Bhop
+## Author: RetroUnreal
 ## SavedVariablesPerCharacter: FSRTrackerDB
+
 FSRTracker.lua
