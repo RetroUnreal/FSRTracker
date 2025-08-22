@@ -1,18 +1,28 @@
--- FSRTracker - hardcoded spell-name triggers (Project Epoch / 3.3.5a)
+-- FSRTracker - Five-Second Rule tracker for Project Epoch (Wrath 3.3.5a)
 -- Blue 5s sweep (FSR) -> wait for first real mana tick via UNIT_MANA -> 2s green pulses -> stop when full
 
-local FSR_DURATION = 5
-local TICK_INTERVAL = 2
-local debugPrint = false
+----------------------------------
+-- Constants & saved variables
+----------------------------------
+local ADDON_NAME = ... or "FSRTracker"
 
--- scale settings
-local MIN_SCALE, MAX_SCALE = 0.5, 3.0
-local barScale = 1.0  -- default; we'll override from SavedVariables on PLAYER_LOGIN
+local FSR_DURATION   = 5
+local TICK_INTERVAL  = 2
+local MIN_SCALE      = 0.5
+local MAX_SCALE      = 3.0
 
--- preview flag (so we can hide the bar again on lock if it was only shown for positioning)
-local isPreview = false
+local debugPrint     = false
+local barScale       = 1.0
 
--- ========= Safe debug print =========
+-- Per-character SavedVariables
+FSRTrackerDB = FSRTrackerDB or {}
+if tonumber(FSRTrackerDB.scale) then
+  barScale = tonumber(FSRTrackerDB.scale)
+end
+
+----------------------------------
+-- Safe debug print
+----------------------------------
 local function sjoin(...)
   local out = {}
   for i = 1, select("#", ...) do out[i] = tostring(select(i, ...)) end
@@ -20,8 +30,9 @@ local function sjoin(...)
 end
 local function dprint(...) if debugPrint then DEFAULT_CHAT_FRAME:AddMessage("|cff66ccffFSR|r "..sjoin(...)) end end
 
--- ========= TRIGGER SET =========
--- Lower-case spell names for O(1) lookups (case-insensitive).
+----------------------------------
+-- Trigger spell set (lowercased)
+----------------------------------
 local TRIGGERS = (function()
   local t = {}
   local function add(name) t[string.lower(name)] = true end
@@ -117,7 +128,7 @@ local TRIGGERS = (function()
   add("Wing Clip")
   add("Wyvern Sting")
 
-  -- Mage (Arcane/Fire/Frost + utility)
+  -- Mage
   add("Amplify Magic")
   add("Arcane Barrage")
   add("Arcane Blast")
@@ -179,7 +190,7 @@ local TRIGGERS = (function()
   add("Icy Veins")
   add("Summon Water Elemental")
 
-  -- Paladin (Holy/Prot/Ret + racials)
+  -- Paladin
   add("Blessing of Light")
   add("Blessing of Wisdom")
   add("Cleanse")
@@ -230,7 +241,7 @@ local TRIGGERS = (function()
   add("Seal of the Mountain")
   add("Seal of Vengeance")
 
-  -- Priest (Discipline/Holy/Shadow + racials)
+  -- Priest
   add("Dispel Magic")
   add("Divine Spirit")
   add("Fear Ward")
@@ -347,7 +358,7 @@ local TRIGGERS = (function()
   add("Tremor Totem")
   add("Reincarnation")
 
-  -- Warlock (Aff/Demo/Destro + utility)
+  -- Warlock
   add("Bane of Agony")
   add("Bane of Doom")
   add("Bane of Exhaustion")
@@ -406,14 +417,16 @@ local TRIGGERS = (function()
   return t
 end)()
 
--- Spells we explicitly ignore (case-insensitive)
+-- Explicit ignores
 local IGNORE = (function()
   local t = {}
   t[string.lower("Faerie Fire (Feral)")] = true
   return t
 end)()
 
--- ========= UI (bar) =========
+----------------------------------
+-- UI: bar & visuals
+----------------------------------
 local bar = CreateFrame("StatusBar", "FSR_Bar", UIParent)
 bar:SetSize(300, 16)
 bar:SetPoint("CENTER", UIParent, "CENTER", 0, -150)
@@ -422,10 +435,10 @@ bar:GetStatusBarTexture():SetHorizTile(false)
 bar:SetMinMaxValues(0, FSR_DURATION)
 bar:SetValue(0)
 bar:SetStatusBarColor(0, 0.5, 1, 1)
-bar:SetScale(barScale)  -- default; will be re-applied from SVs on PLAYER_LOGIN
+bar:SetScale(barScale)
 bar:Hide()
 
--- background
+-- background (classic-safe)
 local bg = bar:CreateTexture(nil, "BACKGROUND")
 bg:SetAllPoints()
 if bg.SetColorTexture then bg:SetColorTexture(0, 0, 0, 0.5) else bg:SetTexture(0, 0, 0, 0.5) end
@@ -437,14 +450,16 @@ spark:SetSize(16, 32)
 spark:SetBlendMode("ADD")
 spark:SetPoint("CENTER", bar, "LEFT", 0, 0)
 
--- drag support (off by default; use /fsr unlock)
+-- drag support
 bar:SetMovable(true)
 bar:EnableMouse(false)
 bar:RegisterForDrag("LeftButton")
 bar:SetScript("OnDragStart", function(self) if self.isUnlocked then self:StartMoving() end end)
-bar:SetScript("OnDragStop", function(self) self:StopMovingOrSizing() end)
+bar:SetScript("OnDragStop",  function(self) self:StopMovingOrSizing() end)
 
--- ========= State / Logic =========
+----------------------------------
+-- State / logic
+----------------------------------
 local f = CreateFrame("Frame")
 local lastCastTime, tracking = 0, false
 local firstTickSeen, tickStart = false, 0
@@ -452,47 +467,49 @@ local lastMana = UnitMana("player") or 0
 
 local function UpdateSpark()
   local _, maxv = bar:GetMinMaxValues()
-  local width = bar:GetWidth()
+  local width   = bar:GetWidth()
   local percent = (maxv > 0) and (bar:GetValue() / maxv) or 0
   spark:SetPoint("CENTER", bar, "LEFT", width * percent, 0)
 end
 
 local function StopFSR(self)
-  tracking = false
+  tracking      = false
+  firstTickSeen = false
   bar:Hide()
   if self then self:SetScript("OnUpdate", nil) end
-  firstTickSeen = false
 end
 
 local function StartFSR()
-  lastCastTime = GetTime()
-  tracking = true
+  lastCastTime  = GetTime()
+  tracking      = true
   firstTickSeen = false
-  tickStart = 0
-  lastMana = UnitMana("player") or 0
+  tickStart     = 0
+  lastMana      = UnitMana("player") or 0
 
   bar:SetMinMaxValues(0, FSR_DURATION)
   bar:SetValue(0)
   bar:SetStatusBarColor(0, 0.5, 1, 1) -- blue
   bar:Show()
-  isPreview = false -- clear preview flag when real tracking begins
 
   f:SetScript("OnUpdate", function(self, elapsed)
     if not tracking then return end
     local now = GetTime()
-    local dt = now - lastCastTime
+    local dt  = now - lastCastTime
 
     if dt <= FSR_DURATION then
+      -- 5-second rule sweep (blue)
       bar:SetMinMaxValues(0, FSR_DURATION)
       bar:SetValue(dt)
       bar:SetStatusBarColor(0, 0.5, 1, 1)
     else
+      -- Regen phase
       if firstTickSeen then
         local since = now - tickStart
         bar:SetMinMaxValues(0, TICK_INTERVAL)
         bar:SetValue(since % TICK_INTERVAL)
-        bar:SetStatusBarColor(0, 1, 0, 0.6) -- green
+        bar:SetStatusBarColor(0, 1, 0, 0.6) -- green pulses
       else
+        -- waiting for first real tick
         bar:SetMinMaxValues(0, TICK_INTERVAL)
         bar:SetValue(0)
         bar:SetStatusBarColor(0, 1, 0, 0.6)
@@ -503,14 +520,13 @@ local function StartFSR()
   end)
 end
 
--- ========= Event Handling =========
+----------------------------------
+-- Events: spell + mana
+----------------------------------
 local function MaybeTriggerFSR(spellName)
   if not spellName or spellName == "" then return end
   local key = string.lower(spellName)
-  if IGNORE[key] then
-    dprint("Ignored:", spellName)
-    return
-  end
+  if IGNORE[key] then dprint("Ignored:", spellName) return end
   if TRIGGERS[key] then
     dprint("Trigger:", spellName)
     StartFSR()
@@ -519,21 +535,20 @@ local function MaybeTriggerFSR(spellName)
   end
 end
 
--- Spellcast events: start blue bar ASAP
+-- start blue sweep ASAP
 f:RegisterEvent("UNIT_SPELLCAST_SENT")
 f:RegisterEvent("UNIT_SPELLCAST_START")
 f:SetScript("OnEvent", function(_, event, unit, arg2)
+  if unit ~= "player" then return end
   if event == "UNIT_SPELLCAST_SENT" then
-    if unit ~= "player" then return end
-    MaybeTriggerFSR(arg2) -- args: unit, spell, rank, target
+    MaybeTriggerFSR(arg2)                 -- unit, spell, rank, target
   elseif event == "UNIT_SPELLCAST_START" then
-    if unit ~= "player" then return end
     local name = UnitCastingInfo("player")
     MaybeTriggerFSR(name)
   end
 end)
 
--- Mana events (Wrath client): detect first tick + stop when full
+-- mana tick & full detection
 local manaFrame = CreateFrame("Frame")
 manaFrame:RegisterEvent("UNIT_MANA")
 manaFrame:RegisterEvent("UNIT_MAXMANA")
@@ -546,55 +561,51 @@ manaFrame:SetScript("OnEvent", function(self, event, unit)
   if unit ~= "player" then return end
 
   local current = UnitMana("player") or 0
-  local max = UnitManaMax("player") or 0
+  local max     = UnitManaMax("player") or 0
 
+  -- stop when full
   if tracking and max > 0 and current >= max then
     dprint("Mana full -> stop.")
     StopFSR(self)
   end
 
+  -- first real tick after FSR window
   if tracking and not firstTickSeen and (GetTime() - lastCastTime) > FSR_DURATION then
     if current > lastMana then
       firstTickSeen = true
-      tickStart = GetTime()
-      dprint("First mana tick via UNIT_MANA at", string.format("%.2f", tickStart - lastCastTime), "s")
+      tickStart     = GetTime()
+      dprint("First mana tick at +", string.format("%.2f", tickStart - lastCastTime), "s")
     end
   end
 
   lastMana = current
 end)
 
--- helper: center horizontally keeping current Y offset
-local function CenterBarHorizontally()
-  local _, _, _, _, yOfs = bar:GetPoint(1)
-  if type(yOfs) ~= "number" then
-    local _, centerY = bar:GetCenter()
-    local screenH = UIParent:GetHeight() or 0
-    yOfs = (centerY or (screenH/2)) - (screenH/2)
-  end
-  yOfs = math.floor((yOfs or -150) + 0.5)
-  bar:ClearAllPoints()
-  bar:SetPoint("CENTER", UIParent, "CENTER", 0, yOfs)
-  bar:SetUserPlaced(true)
-end
-
--- ========= Apply SavedVariables on login =========
-local init = CreateFrame("Frame")
-init:RegisterEvent("PLAYER_LOGIN")
-init:SetScript("OnEvent", function()
-  -- ensure SV table exists
+----------------------------------
+-- Login message + scale restore (PLAYER_LOGIN)
+----------------------------------
+local boot = CreateFrame("Frame")
+boot:RegisterEvent("PLAYER_LOGIN")
+boot:SetScript("OnEvent", function(self)
+  -- restore saved scale
   FSRTrackerDB = FSRTrackerDB or {}
-  -- read, clamp, and apply saved scale
-  local sv = tonumber(FSRTrackerDB.scale)
-  if sv then
-    if sv < MIN_SCALE then sv = MIN_SCALE end
-    if sv > MAX_SCALE then sv = MAX_SCALE end
-    barScale = sv
+  local saved = tonumber(FSRTrackerDB.scale)
+  if saved then
+    barScale = saved
     bar:SetScale(barScale)
   end
+
+  -- print login line (like other addons)
+  local ver = GetAddOnMetadata(ADDON_NAME or "FSRTracker", "Version") or GetAddOnMetadata("FSRTracker", "Version") or ""
+  local verText = (ver ~= "" and (" v" .. ver) or "")
+  DEFAULT_CHAT_FRAME:AddMessage("|cff66ccffFSRTracker|r"..verText.." loaded — by |cffffffffRetroUnreal / Bhop|r. Type |cffffffff/fsr|r for commands.")
+
+  self:UnregisterEvent("PLAYER_LOGIN")
 end)
 
--- ========= Slash Commands =========
+----------------------------------
+-- Slash commands
+----------------------------------
 SLASH_FSR1 = "/fsr"
 SlashCmdList["FSR"] = function(msg)
   msg = (msg or ""):lower():match("^%s*(.-)%s*$")
@@ -610,40 +621,35 @@ SlashCmdList["FSR"] = function(msg)
   elseif msg == "unlock" or msg == "move" then
     bar.isUnlocked = true
     bar:EnableMouse(true)
-    bar:SetScale(barScale) -- make sure preview respects saved scale
-    if not bar:IsShown() then
-      isPreview = true
-      bar:SetMinMaxValues(0, 5)
-      bar:SetValue(5)
-      bar:SetStatusBarColor(0, 0.5, 1, 0.4) -- translucent blue for preview
-      bar:Show()
-      UpdateSpark()
-    end
+    -- show a preview at the current scale
+    bar:SetMinMaxValues(0, FSR_DURATION)
+    bar:SetValue(0)
+    bar:SetStatusBarColor(0, 0.5, 1, 0.9)
+    bar:Show()
     print("|cff66ccffFSR|r bar UNLOCKED. Drag to move. Use /fsr lock when done.")
 
   elseif msg == "lock" then
     bar.isUnlocked = false
     bar:EnableMouse(false)
-    bar:SetUserPlaced(true)
-    if isPreview and not tracking then
-      bar:Hide()
-    end
-    isPreview = false
+    if not tracking then bar:Hide() end
     print("|cff66ccffFSR|r bar LOCKED. Use /fsr unlock to move it again.")
 
   elseif msg == "reset" then
+    -- reset position & scale
     bar:ClearAllPoints()
     bar:SetPoint("CENTER", UIParent, "CENTER", 0, -150)
     barScale = 1.0
-    if barScale < MIN_SCALE then barScale = MIN_SCALE end
-    if barScale > MAX_SCALE then barScale = MAX_SCALE end
-    bar:SetScale(barScale)
     FSRTrackerDB.scale = barScale
-    print(string.format("|cff66ccffFSR|r bar position reset and scale set to %.2f.", barScale))
+    bar:SetScale(barScale)
+    print("|cff66ccffFSR|r bar reset to default position and scale 1.0.")
 
   elseif msg == "center" then
-    CenterBarHorizontally()
-    print("|cff66ccffFSR|r bar centered horizontally (x = 0).")
+    -- snap horizontally to center; keep current Y offset
+    local _, _, _, _, y = bar:GetPoint()
+    y = y or -150
+    bar:ClearAllPoints()
+    bar:SetPoint("CENTER", UIParent, "CENTER", 0, y)
+    print("|cff66ccffFSR|r bar centered horizontally (y offset "..tostring(y)..").")
 
   elseif msg and msg:match("^scale") then
     local val = tonumber(msg:match("^scale%s+([%d%.]+)"))
@@ -655,11 +661,18 @@ SlashCmdList["FSR"] = function(msg)
     if val < MIN_SCALE then val = MIN_SCALE end
     if val > MAX_SCALE then val = MAX_SCALE end
     barScale = val
+    FSRTrackerDB.scale = barScale
     bar:SetScale(barScale)
-    FSRTrackerDB.scale = barScale   -- persist per character
     print(string.format("|cff66ccffFSR|r bar scale set to %.2f (range %.1f–%.1f)", barScale, MIN_SCALE, MAX_SCALE))
 
   else
-    print("|cff66ccffFSR|r commands: test, debug, unlock, lock, reset, center, scale <value>")
+    print("|cff66ccffFSR|r commands:")
+    print("  |cffffffff/fsr unlock|r — unlock & show preview (drag to move)")
+    print("  |cffffffff/fsr lock|r — lock & hide (when idle)")
+    print("  |cffffffff/fsr scale <"..MIN_SCALE.."–"..MAX_SCALE..">|r — set scale")
+    print("  |cffffffff/fsr center|r — center horizontally")
+    print("  |cffffffff/fsr reset|r — reset position & scale")
+    print("  |cffffffff/fsr test|r — show a test sweep")
+    print("  |cffffffff/fsr debug|r — toggle debug prints")
   end
 end
