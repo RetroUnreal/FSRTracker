@@ -1,4 +1,4 @@
-#FSRTracker - Five Second Rule Tracker for Project-Epoch 3.3.5
+# FSRTracker - Five Second Rule Tracker for Project-Epoch 3.3.5
 
 Download the .rar in the release and unzip it to your addons folder, or add the two files above to a folder named FSRTracker in your addons...
 
