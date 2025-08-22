@@ -18,4 +18,8 @@ Commands:
 
 /fsr center (centers the bar horizontally)
 
+/fsr hidebg (toggles the bar background on/off, only show the spark/line)
+
+/fsr front (changes the priority it has over other ui elements, just increases the strata and level to 100)
+
 /fsr reset (resets the bar completely back to factory settings xd)
