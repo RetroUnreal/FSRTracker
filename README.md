@@ -7,6 +7,8 @@ All the ticks after that should be 100% on time with your mana regen since it us
 
 Enjoy finally drink walking without having to guess mana ticks again! I've been looking for an addon or weakaura that does this for 3.3.5 for a long ass time...
 
+Using it for other 3.3.5 servers will require you to add the missing Wrath spells for your class to the FSRTracker.lua file since I had to hard code them. Keep in mind that some of them are named differently on Project-Epoch as well.
+
 Commands:
 
 /fsr scale (sets the scale of the bar, accepted values are between 0.5 and 3)
