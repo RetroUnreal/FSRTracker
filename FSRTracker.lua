@@ -42,7 +42,6 @@ local TRIGGERS = (function()
   local function add(name) t[string.lower(name)] = true end
 
   -- Druid
-  add("Frostbolt"); add("Fireball"); add("Arcane Explosion"); add("Arcane Missiles"); add("Fire Blast"); add("Frost Nova")
   add("Barkskin"); add("Cyclone"); add("Entangling Roots"); add("Faerie Fire"); add("Force of Nature"); add("Hibernate")
   add("Hurricane"); add("Innervate"); add("Insect Swarm"); add("Moonfire"); add("Moonkin Form"); add("Soothe Animal")
   add("Starfire"); add("Teleport: Moonglade"); add("Thorns"); add("Wrath"); add("Aquatic Form"); add("Cat Form")
@@ -62,6 +61,7 @@ local TRIGGERS = (function()
   add("Wyvern Sting")
 
   -- Mage
+  add("Frostbolt"); add("Fireball"); add("Arcane Explosion"); add("Arcane Missiles"); add("Fire Blast"); add("Frost Nova")
   add("Amplify Magic"); add("Arcane Barrage"); add("Arcane Blast"); add("Arcane Brilliance"); add("Arcane Intellect"); add("Blink")
   add("Conjure Food"); add("Conjure Mana Agate"); add("Conjure Mana Citrine"); add("Conjure Mana Jade"); add("Conjure Mana Ruby")
   add("Conjure Water"); add("Conjure Weapon"); add("Counterspell"); add("Dampen Magic"); add("Invisibility"); add("Mage Armor")
