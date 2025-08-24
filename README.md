@@ -13,8 +13,7 @@ You can add the missing spells under your class in the same way as explained bel
 
   -- Mage
   
-  add("Frostbolt"); add("Fireball"); add("Arcane Explosion"); add("Arcane Missiles"); add("Fire Blast"); add("Frost Nova") <--- No ;
-  
+  add("Frostbolt"); add("Fireball"); add("Arcane Explosion"); add("Arcane Missiles"); add("Fire Blast"); add("Frost Nova") <--- No ;\
   add("Amplify Magic"); add("Arcane Barrage"); add("Arcane Blast"); add("Arcane Brilliance"); add("Arcane Intellect"); add("Blink")
   
 Commands:
