@@ -11,16 +11,20 @@ Using it for other 3.3.5 servers will require you to add the missing Wrath spell
 
 Commands:
 
-/fsr scale (sets the scale of the bar, accepted values are between 0.5 and 3)
+/fsr scale <0.5–3.0> — Sets the total scale of FSRTracker Default: 1.0.
 
-/fsr unlock (unlocks the bar)
+/fsr scalex <0.5–3.0> — Sets the horizontal stretch (width) of FSRTracker Default: 1.0 (or whatever your total scale is set to).
 
-/fsr lock (locks the bar)
+/fsr scaley <0.5–3.0> — Sets the vertical stretch (height) of FSRTracker Default: 1.0 (or whatever your total scale is set to).
 
-/fsr center (centers the bar horizontally)
+/fsr unlock — (Unlocks FSRTracker)
 
-/fsr hidebg (toggles the bar background on/off, only show the spark/line)
+/fsr lock — (Locks FSRTracker)
 
-/fsr front (changes the priority it has over other ui elements, just increases the strata and level to 100)
+/fsr center — (Centers FSRTracker horizontally)
 
-/fsr reset (resets the bar completely back to factory settings xd)
+/fsr hidebg — (Toggles the bar background on/off, only show the spark/line)
+
+/fsr front — (Changes FSRTracker's priority it has over other UI Elements to MAX, so you can display it over your Unit Frame for example.)
+
+/fsr reset — (Resets FSRTracker completely, back to factory settings xd)
