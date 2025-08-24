@@ -9,6 +9,8 @@ Enjoy finally drink walking without having to guess mana ticks again! I've been 
 
 Using it for other 3.3.5 servers will require you to add the missing Wrath spells for your class to the FSRTracker.lua file since I had to hard code them and only added the Project-Epoch spells. Keep in mind that some of them are named differently on Project-Epoch as well.
 
+You can add the missing spells under your class in the same way these are added, just make sure its the same structure with a ";" in between them, except for at the end of a line.
+
 Commands:
 
 /fsr scale <0.5–3.0> — Sets the total scale of FSRTracker, Default: 1.0.
