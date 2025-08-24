@@ -17,9 +17,9 @@ You can add the missing spells under your class in the same way as explained bel
 Commands:\
 /fsr scale <0.5–3.0> — Sets the total scale of FSRTracker, Default: 1.0.
 
-/fsr scalex <0.5–3.0> — Sets the horizontal stretch (width) of FSRTracker, Default: 1.0 (or whatever your total scale is set to).
+/fsr scalex <0.5–3.0> — Sets the horizontal stretch (width) of FSRTracker, Default: 1.0
 
-/fsr scaley <0.5–3.0> — Sets the vertical stretch (height) of FSRTracker, Default: 1.0 (or whatever your total scale is set to).
+/fsr scaley <0.5–3.0> — Sets the vertical stretch (height) of FSRTracker, Default: 1.0
 
 /fsr unlock — (Unlocks FSRTracker)
 
