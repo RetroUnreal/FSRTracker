@@ -184,7 +184,7 @@ local function RefreshDimensions()
   local w = BASE_W * scaleX
   local h = BASE_H * scaleY
   bar:SetSize(w, h)
-  -- spark size: keep slim, scale height with bar; width scaled by uniform scale anyway
+  -- spark size: keep slim, scale height with bar
   local sparkH = math.max(h * 2, 8)
   spark:SetSize(BASE_SPARK_W, sparkH)
   -- ensure spark is anchored correctly
@@ -263,7 +263,7 @@ local function StartFSR()
 end
 
 ----------------------------------
--- Events: spell + mana
+-- Events: spell (with debug prints) + mana
 ----------------------------------
 local function MaybeTriggerFSR(spellName)
   if not spellName or spellName == "" then return end
@@ -277,13 +277,50 @@ local function MaybeTriggerFSR(spellName)
   end
 end
 
--- start blue sweep ASAP
+-- Helper: dump every spell event when /fsr debug is on
+local function DebugSpellEvent(event, unit, a2, a3, a4, a5)
+  if not debugPrint or unit ~= "player" then return end
+  local name
+  if event == "UNIT_SPELLCAST_SENT" then
+    name = a2 -- spellName
+  elseif event == "UNIT_SPELLCAST_START" then
+    name = UnitCastingInfo(unit)
+  elseif event == "UNIT_SPELLCAST_CHANNEL_START" then
+    name = UnitChannelInfo(unit)
+  else
+    name = a2 or UnitCastingInfo(unit) or UnitChannelInfo(unit)
+  end
+  name = name or "?"
+  local tag = ""
+  local key = string.lower(name)
+  if IGNORE[key] then
+    tag = " [IGNORED]"
+  elseif TRIGGERS[key] then
+    tag = " [TRIGGER]"
+  end
+  DEFAULT_CHAT_FRAME:AddMessage(string.format("|cff66ccffFSR|r %s: %s%s", event, name, tag))
+end
+
+-- start blue sweep ASAP; also register extra events for better debug visibility
 f:RegisterEvent("UNIT_SPELLCAST_SENT")
 f:RegisterEvent("UNIT_SPELLCAST_START")
-f:SetScript("OnEvent", function(_, event, unit, arg2)
+f:RegisterEvent("UNIT_SPELLCAST_SUCCEEDED")
+f:RegisterEvent("UNIT_SPELLCAST_STOP")
+f:RegisterEvent("UNIT_SPELLCAST_FAILED")
+f:RegisterEvent("UNIT_SPELLCAST_INTERRUPTED")
+f:RegisterEvent("UNIT_SPELLCAST_CHANNEL_START")
+f:RegisterEvent("UNIT_SPELLCAST_CHANNEL_STOP")
+
+f:SetScript("OnEvent", function(_, event, unit, arg2, arg3, arg4, arg5)
   if unit ~= "player" then return end
+
+  -- Always print the spell when debug is on
+  DebugSpellEvent(event, unit, arg2, arg3, arg4, arg5)
+
+  -- Only these actually *trigger* the FSR blue bar
   if event == "UNIT_SPELLCAST_SENT" then
-    MaybeTriggerFSR(arg2)                 -- unit, spell, rank, target
+    -- args: unit, spellName, rank, target
+    MaybeTriggerFSR(arg2)
   elseif event == "UNIT_SPELLCAST_START" then
     local name = UnitCastingInfo("player")
     MaybeTriggerFSR(name)
@@ -353,7 +390,6 @@ boot:SetScript("OnEvent", function(self, event, arg1)
     self:UnregisterEvent("ADDON_LOADED")
   end
 end)
-
 
 ----------------------------------
 -- Slash commands
@@ -471,6 +507,6 @@ SlashCmdList["FSR"] = function(msg)
     print("  |cffffffff/fsr scaley <"..MIN_SCALE.."–"..MAX_SCALE..">|r — height stretch")
     print("  |cffffffff/fsr hidebg [on|off]|r — toggle spark-only mode")
     print("  |cffffffff/fsr test|r — show a test sweep")
-    print("  |cffffffff/fsr debug|r — toggle debug prints")
+    print("  |cffffffff/fsr debug|r — toggle debug prints (also prints spell events)")
   end
 end
