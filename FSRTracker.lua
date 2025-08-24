@@ -390,7 +390,7 @@ boot:SetScript("OnEvent", function(self, event, arg1)
   elseif event == "PLAYER_LOGIN" then
     local ver = GetAddOnMetadata(ADDON_NAME or "FSRTracker", "Version") or GetAddOnMetadata("FSRTracker", "Version") or ""
     local verText = (ver ~= "" and (" v" .. ver) or "")
-    DEFAULT_CHAT_FRAME:AddMessage("|cff66ccffFSRTracker|r"..verText.." loaded — by |cffffffffRetroUnreal / Bhop|r. Type |cffffffff/fsr|r for commands.")
+    DEFAULT_CHAT_FRAME:AddMessage("|cff66ccffFSRTracker|r"..verText.." loaded — by |cffa335eeRetroUnreal|r aka |cffa335eeBhop|r. Type |cff66ccff/fsr|r for commands.")
     self:UnregisterEvent("PLAYER_LOGIN")
     self:UnregisterEvent("ADDON_LOADED")
   end
@@ -501,16 +501,16 @@ SlashCmdList["FSR"] = function(msg)
 
   else
     print("|cff66ccffFSR|r commands:")
-    print("  |cffffffff/fsr unlock|r — unlock & show preview (drag to move)")
-    print("  |cffffffff/fsr lock|r — lock & hide (when idle)")
-    print("  |cffffffff/fsr center|r — center horizontally")
-    print("  |cffffffff/fsr reset|r — reset position and ALL scales")
-    print("  |cffffffff/fsr front|r — bring the bar above other UI")
-    print("  |cffffffff/fsr scale <"..MIN_SCALE.."–"..MAX_SCALE..">|r — uniform scale")
-    print("  |cffffffff/fsr scalex <"..MIN_SCALE.."–"..MAX_SCALE..">|r — width stretch")
-    print("  |cffffffff/fsr scaley <"..MIN_SCALE.."–"..MAX_SCALE..">|r — height stretch")
-    print("  |cffffffff/fsr hidebg [on|off]|r — toggle spark-only mode")
-    print("  |cffffffff/fsr test|r — show a test sweep")
-    print("  |cffffffff/fsr debug|r — toggle debug prints (also prints spell events)")
+    print("  |cff66ccff/fsr unlock|r — unlock & show preview (drag to move)")
+    print("  |cff66ccff/fsr lock|r — lock & hide (when idle)")
+    print("  |cff66ccff/fsr center|r — center horizontally")
+    print("  |cff66ccff/fsr reset|r — reset position and ALL scales")
+    print("  |cff66ccff/fsr front|r — bring the bar above other UI")
+    print("  |cff66ccff/fsr scale <"..MIN_SCALE.."–"..MAX_SCALE..">|r — uniform scale")
+    print("  |cff66ccff/fsr scalex <"..MIN_SCALE.."–"..MAX_SCALE..">|r — width stretch")
+    print("  |cff66ccff/fsr scaley <"..MIN_SCALE.."–"..MAX_SCALE..">|r — height stretch")
+    print("  |cff66ccff/fsr hidebg [on|off]|r — toggle spark-only mode")
+    print("  |cff66ccff/fsr test|r — show a test sweep")
+    print("  |cff66ccff/fsr debug|r — toggle debug prints (also prints spell events)")
   end
 end
