@@ -43,6 +43,19 @@ end
 local function dprint(...) if debugPrint then DEFAULT_CHAT_FRAME:AddMessage("|cff66ccffFSR|r "..sjoin(...)) end end
 
 ----------------------------------
+-- Helpers: always read real MANA (powerType 0)
+----------------------------------
+local hasUnitPower = type(UnitPower) == "function" and type(UnitPowerMax) == "function"
+local function GetPlayerMana()
+  if hasUnitPower then
+    return (UnitPower("player", 0) or 0), (UnitPowerMax("player", 0) or 0)
+  else
+    -- fallback (older cores): may return current power type; best available
+    return (UnitMana("player") or 0), (UnitManaMax("player") or 0)
+  end
+end
+
+----------------------------------
 -- Trigger spell set (lowercased)
 ----------------------------------
 local TRIGGERS = (function()
@@ -208,7 +221,7 @@ RefreshDimensions()
 local f = CreateFrame("Frame")
 local lastCastTime, tracking = 0, false
 local firstTickSeen, tickStart = false, 0
-local lastMana = UnitMana("player") or 0
+local lastMana = (GetPlayerMana())
 
 local function UpdateSpark()
   local _, maxv = bar:GetMinMaxValues()
@@ -229,7 +242,7 @@ local function StartFSR()
   tracking      = true
   firstTickSeen = false
   tickStart     = 0
-  lastMana      = UnitMana("player") or 0
+  lastMana      = (GetPlayerMana())
 
   bar:SetMinMaxValues(0, FSR_DURATION)
   bar:SetValue(0)
@@ -277,7 +290,7 @@ local function MaybeTriggerFSR(spellName)
   end
 end
 
--- Helper: dump every spell event when /fsr debug is on
+-- Debug every spell event when /fsr debug is on
 local function DebugSpellEvent(event, unit, a2, a3, a4, a5)
   if not debugPrint or unit ~= "player" then return end
   local name
@@ -313,34 +326,28 @@ f:RegisterEvent("UNIT_SPELLCAST_CHANNEL_STOP")
 
 f:SetScript("OnEvent", function(_, event, unit, arg2, arg3, arg4, arg5)
   if unit ~= "player" then return end
-
-  -- Always print the spell when debug is on
   DebugSpellEvent(event, unit, arg2, arg3, arg4, arg5)
 
-  -- Only these actually *trigger* the FSR blue bar
   if event == "UNIT_SPELLCAST_SENT" then
-    -- args: unit, spellName, rank, target
     MaybeTriggerFSR(arg2)
   elseif event == "UNIT_SPELLCAST_START" then
-    local name = UnitCastingInfo("player")
-    MaybeTriggerFSR(name)
+    MaybeTriggerFSR(UnitCastingInfo("player"))
   end
 end)
 
--- mana tick & full detection
+-- mana tick & full detection (read true mana, not current power)
 local manaFrame = CreateFrame("Frame")
 manaFrame:RegisterEvent("UNIT_MANA")
 manaFrame:RegisterEvent("UNIT_MAXMANA")
 manaFrame:RegisterEvent("PLAYER_ENTERING_WORLD")
 manaFrame:SetScript("OnEvent", function(self, event, unit)
   if event == "PLAYER_ENTERING_WORLD" then
-    lastMana = UnitMana("player") or 0
+    lastMana = (GetPlayerMana())
     return
   end
   if unit ~= "player" then return end
 
-  local current = UnitMana("player") or 0
-  local max     = UnitManaMax("player") or 0
+  local current, max = GetPlayerMana()
 
   if tracking and max > 0 and current >= max then
     dprint("Mana full -> stop.")
@@ -366,7 +373,6 @@ boot:RegisterEvent("ADDON_LOADED")
 boot:RegisterEvent("PLAYER_LOGIN")
 boot:SetScript("OnEvent", function(self, event, arg1)
   if event == "ADDON_LOADED" and (arg1 == ADDON_NAME or arg1 == "FSRTracker") then
-    -- SavedVariables are now guaranteed to be available for this addon
     FSRTrackerDB = FSRTrackerDB or {}
 
     if tonumber(FSRTrackerDB.scale)  then barScale = tonumber(FSRTrackerDB.scale)  else barScale = 1.0 end
@@ -376,7 +382,6 @@ boot:SetScript("OnEvent", function(self, event, arg1)
     if type(FSRTrackerDB.strata) == "string" then savedStrata = FSRTrackerDB.strata else savedStrata = "MEDIUM" end
     if tonumber(FSRTrackerDB.level) then savedLevel = tonumber(FSRTrackerDB.level) else savedLevel = nil end
 
-    -- Apply all restored settings
     RefreshDimensions()
     bar:SetFrameStrata(savedStrata or "MEDIUM")
     if savedLevel then bar:SetFrameLevel(savedLevel) end
@@ -422,7 +427,6 @@ SlashCmdList["FSR"] = function(msg)
     print("|cff66ccffFSR|r bar LOCKED. Use /fsr unlock to move it again.")
 
   elseif msg == "reset" then
-    -- reset position & all scales
     bar:ClearAllPoints()
     bar:SetPoint("CENTER", UIParent, "CENTER", 0, -150)
     barScale, scaleX, scaleY = 1.0, 1.0, 1.0
