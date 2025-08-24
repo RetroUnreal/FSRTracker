@@ -11,8 +11,7 @@ Using it for other 3.3.5 servers will require you to add the missing Wrath spell
 
 You can add the missing spells under your class in the same way as explained below, just make sure its the same structure with a ";" in between them, except for at the end of a line.
 
-                  | 
-  -- Mage         v add a ; 
+  -- Mage
   
   add("Frostbolt"); add("Fireball"); add("Arcane Explosion"); add("Arcane Missiles"); add("Fire Blast"); add("Frost Nova") <--- No ;
   
