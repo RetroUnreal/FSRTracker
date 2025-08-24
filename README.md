@@ -12,8 +12,7 @@ Keep in mind that some of them are named differently on Project-Epoch as well.\
 You can add the missing spells under your class in the same way as explained below, just make sure its the same structure with a ";" in between them, except for at the end of a line.
 
   -- Mage\
-  add("Frostbolt"); add("Fireball"); add("Arcane Explosion"); add("Arcane Missiles"); add("Fire Blast"); add("Frost Nova") <--- No ;\
-  add("Amplify Magic"); add("Arcane Barrage"); add("Arcane Blast"); add("Arcane Brilliance"); add("Arcane Intellect"); add("Blink")
+  add("Frostbolt"); add("Fireball"); add("Arcane Explosion"); add("Arcane Missiles"); add("Your Spell Name Here"); add("Your Spell Name Here") <--- No ; at the end of the line.
   
 Commands:\
 /fsr scale <0.5–3.0> — Sets the total scale of FSRTracker, Default: 1.0.
