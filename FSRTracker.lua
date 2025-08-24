@@ -11,17 +11,25 @@ local TICK_INTERVAL  = 2
 local MIN_SCALE      = 0.5
 local MAX_SCALE      = 3.0
 
+-- Base unscaled size of the bar (used for non-uniform stretch)
+local BASE_W, BASE_H = 300, 16
+local BASE_SPARK_W, BASE_SPARK_H = 16, 32
+
 local debugPrint     = false
-local barScale       = 1.0
-local hideBG         = false          -- hide background & fill, spark only
-local savedStrata    = "MEDIUM"       -- default strata
-local savedLevel     = nil            -- optional frame level
+local barScale       = 1.0     -- uniform scale (SetScale)
+local scaleX         = 1.0     -- width multiplier (SetSize)
+local scaleY         = 1.0     -- height multiplier (SetSize)
+local hideBG         = false   -- hide background & fill, spark only
+local savedStrata    = "MEDIUM"
+local savedLevel     = nil
 
 -- Per-character SavedVariables
 FSRTrackerDB = FSRTrackerDB or {}
-if tonumber(FSRTrackerDB.scale) then barScale = tonumber(FSRTrackerDB.scale) end
+if tonumber(FSRTrackerDB.scale)  then barScale = tonumber(FSRTrackerDB.scale)  end
+if tonumber(FSRTrackerDB.scalex) then scaleX   = tonumber(FSRTrackerDB.scalex) end
+if tonumber(FSRTrackerDB.scaley) then scaleY   = tonumber(FSRTrackerDB.scaley) end
 if type(FSRTrackerDB.hideBG) == "boolean" then hideBG = FSRTrackerDB.hideBG end
-if type(FSRTrackerDB.strata) == "string" then savedStrata = FSRTrackerDB.strata end
+if type(FSRTrackerDB.strata) == "string"  then savedStrata = FSRTrackerDB.strata end
 if tonumber(FSRTrackerDB.level) then savedLevel = tonumber(FSRTrackerDB.level) end
 
 ----------------------------------
@@ -137,13 +145,11 @@ end)()
 -- UI: bar & visuals
 ----------------------------------
 local bar = CreateFrame("StatusBar", "FSR_Bar", UIParent)
-bar:SetSize(300, 16)
 bar:SetPoint("CENTER", UIParent, "CENTER", 0, -150)
 bar:SetStatusBarTexture("Interface\\TARGETINGFRAME\\UI-StatusBar")
 bar:GetStatusBarTexture():SetHorizTile(false)
 bar:SetMinMaxValues(0, FSR_DURATION)
 bar:SetValue(0)
-bar:SetScale(barScale)
 bar:SetFrameStrata(savedStrata or "MEDIUM")
 if savedLevel then bar:SetFrameLevel(savedLevel) end
 bar:Hide()
@@ -156,9 +162,7 @@ if bg.SetColorTexture then bg:SetColorTexture(0, 0, 0, 0.5) else bg:SetTexture(0
 -- spark
 local spark = bar:CreateTexture(nil, "OVERLAY")
 spark:SetTexture("Interface\\CastingBar\\UI-CastingBar-Spark")
-spark:SetSize(16, 32)
 spark:SetBlendMode("ADD")
-spark:SetPoint("CENTER", bar, "LEFT", 0, 0)
 
 -- track current fill color and apply hideBG safely
 local curR, curG, curB, curA = 0, 0.5, 1, 1
@@ -172,12 +176,31 @@ local function SetBarColor(r,g,b,a)
 end
 SetBarColor(0, 0.5, 1, 1)
 
+-- Dimension updates (uniform + non-uniform)
+local function RefreshDimensions()
+  -- uniform scale first
+  bar:SetScale(barScale)
+  -- then non-uniform stretch via SetSize
+  local w = BASE_W * scaleX
+  local h = BASE_H * scaleY
+  bar:SetSize(w, h)
+  -- spark size: keep slim, scale height with bar; width scaled by uniform scale anyway
+  local sparkH = math.max(h * 2, 8)
+  spark:SetSize(BASE_SPARK_W, sparkH)
+  -- ensure spark is anchored correctly
+  spark:ClearAllPoints()
+  spark:SetPoint("CENTER", bar, "LEFT", 0, 0)
+end
+
 -- drag support
 bar:SetMovable(true)
 bar:EnableMouse(false)
 bar:RegisterForDrag("LeftButton")
 bar:SetScript("OnDragStart", function(self) if self.isUnlocked then self:StartMoving() end end)
 bar:SetScript("OnDragStop",  function(self) self:StopMovingOrSizing() end)
+
+-- initialize size once
+RefreshDimensions()
 
 ----------------------------------
 -- State / logic
@@ -299,30 +322,38 @@ manaFrame:SetScript("OnEvent", function(self, event, unit)
 end)
 
 ----------------------------------
--- Login message + restore visuals
+-- SavedVars restore + login message
 ----------------------------------
 local boot = CreateFrame("Frame")
+boot:RegisterEvent("ADDON_LOADED")
 boot:RegisterEvent("PLAYER_LOGIN")
-boot:SetScript("OnEvent", function(self)
-  -- restore saved prefs
-  FSRTrackerDB = FSRTrackerDB or {}
-  if tonumber(FSRTrackerDB.scale) then barScale = tonumber(FSRTrackerDB.scale) end
-  if type(FSRTrackerDB.hideBG) == "boolean" then hideBG = FSRTrackerDB.hideBG end
-  if type(FSRTrackerDB.strata) == "string" then savedStrata = FSRTrackerDB.strata end
-  if tonumber(FSRTrackerDB.level) then savedLevel = tonumber(FSRTrackerDB.level) end
+boot:SetScript("OnEvent", function(self, event, arg1)
+  if event == "ADDON_LOADED" and (arg1 == ADDON_NAME or arg1 == "FSRTracker") then
+    -- SavedVariables are now guaranteed to be available for this addon
+    FSRTrackerDB = FSRTrackerDB or {}
 
-  bar:SetScale(barScale)
-  bar:SetFrameStrata(savedStrata or "MEDIUM")
-  if savedLevel then bar:SetFrameLevel(savedLevel) end
-  ApplyHideBG()
+    if tonumber(FSRTrackerDB.scale)  then barScale = tonumber(FSRTrackerDB.scale)  else barScale = 1.0 end
+    if tonumber(FSRTrackerDB.scalex) then scaleX   = tonumber(FSRTrackerDB.scalex) else scaleX   = 1.0 end
+    if tonumber(FSRTrackerDB.scaley) then scaleY   = tonumber(FSRTrackerDB.scaley) else scaleY   = 1.0 end
+    if type(FSRTrackerDB.hideBG) == "boolean" then hideBG = FSRTrackerDB.hideBG else hideBG = false end
+    if type(FSRTrackerDB.strata) == "string" then savedStrata = FSRTrackerDB.strata else savedStrata = "MEDIUM" end
+    if tonumber(FSRTrackerDB.level) then savedLevel = tonumber(FSRTrackerDB.level) else savedLevel = nil end
 
-  -- print login line
-  local ver = GetAddOnMetadata(ADDON_NAME or "FSRTracker", "Version") or GetAddOnMetadata("FSRTracker", "Version") or ""
-  local verText = (ver ~= "" and (" v" .. ver) or "")
-  DEFAULT_CHAT_FRAME:AddMessage("|cff66ccffFSRTracker|r"..verText.." loaded — by |cffffffffRetroUnreal / Bhop|r. Type |cffffffff/fsr|r for commands.")
+    -- Apply all restored settings
+    RefreshDimensions()
+    bar:SetFrameStrata(savedStrata or "MEDIUM")
+    if savedLevel then bar:SetFrameLevel(savedLevel) end
+    ApplyHideBG()
 
-  self:UnregisterEvent("PLAYER_LOGIN")
+  elseif event == "PLAYER_LOGIN" then
+    local ver = GetAddOnMetadata(ADDON_NAME or "FSRTracker", "Version") or GetAddOnMetadata("FSRTracker", "Version") or ""
+    local verText = (ver ~= "" and (" v" .. ver) or "")
+    DEFAULT_CHAT_FRAME:AddMessage("|cff66ccffFSRTracker|r"..verText.." loaded — by |cffffffffRetroUnreal / Bhop|r. Type |cffffffff/fsr|r for commands.")
+    self:UnregisterEvent("PLAYER_LOGIN")
+    self:UnregisterEvent("ADDON_LOADED")
+  end
 end)
+
 
 ----------------------------------
 -- Slash commands
@@ -342,7 +373,6 @@ SlashCmdList["FSR"] = function(msg)
   elseif msg == "unlock" or msg == "move" then
     bar.isUnlocked = true
     bar:EnableMouse(true)
-    -- preview at current mode/scale (spark-only if hidebg is on)
     bar:SetMinMaxValues(0, FSR_DURATION)
     bar:SetValue(0)
     SetBarColor(0, 0.5, 1, 0.9)
@@ -356,16 +386,17 @@ SlashCmdList["FSR"] = function(msg)
     print("|cff66ccffFSR|r bar LOCKED. Use /fsr unlock to move it again.")
 
   elseif msg == "reset" then
-    -- reset position & scale (keeps current strata unless you use /fsr front again)
+    -- reset position & all scales
     bar:ClearAllPoints()
     bar:SetPoint("CENTER", UIParent, "CENTER", 0, -150)
-    barScale = 1.0
-    FSRTrackerDB.scale = barScale
-    bar:SetScale(barScale)
-    print("|cff66ccffFSR|r bar reset to default position and scale 1.0.")
+    barScale, scaleX, scaleY = 1.0, 1.0, 1.0
+    FSRTrackerDB.scale  = barScale
+    FSRTrackerDB.scalex = scaleX
+    FSRTrackerDB.scaley = scaleY
+    RefreshDimensions()
+    print("|cff66ccffFSR|r bar reset to default position and scale 1.0 (scalex=1.0, scaley=1.0).")
 
   elseif msg == "center" then
-    -- snap horizontally to center; keep current Y offset
     local _, _, _, _, y = bar:GetPoint()
     y = y or -150
     bar:ClearAllPoints()
@@ -373,14 +404,13 @@ SlashCmdList["FSR"] = function(msg)
     print("|cff66ccffFSR|r bar centered horizontally (y offset "..tostring(y)..").")
 
   elseif msg == "front" then
-    -- bring to top: use TOOLTIP strata and a high frame level
     bar:SetFrameStrata("TOOLTIP")
     bar:SetFrameLevel(100)
     FSRTrackerDB.strata = "TOOLTIP"
     FSRTrackerDB.level  = 100
     print("|cff66ccffFSR|r bar brought to front (strata=TOOLTIP, level=100).")
 
-  elseif msg and msg:match("^scale") then
+  elseif msg:match("^scale%s") or msg == "scale" then
     local val = tonumber(msg:match("^scale%s+([%d%.]+)"))
     if not val then
       print(string.format("|cff66ccffFSR|r usage: /fsr scale <%.1f–%.1f>", MIN_SCALE, MAX_SCALE))
@@ -391,19 +421,40 @@ SlashCmdList["FSR"] = function(msg)
     if val > MAX_SCALE then val = MAX_SCALE end
     barScale = val
     FSRTrackerDB.scale = barScale
-    bar:SetScale(barScale)
-    print(string.format("|cff66ccffFSR|r bar scale set to %.2f (range %.1f–%.1f)", barScale, MIN_SCALE, MAX_SCALE))
+    RefreshDimensions()
+    print(string.format("|cff66ccffFSR|r scale set to %.2f (range %.1f–%.1f).", barScale, MIN_SCALE, MAX_SCALE))
+
+  elseif msg:match("^scalex%s") or msg == "scalex" then
+    local val = tonumber(msg:match("^scalex%s+([%d%.]+)"))
+    if not val then
+      print(string.format("|cff66ccffFSR|r usage: /fsr scalex <%.1f–%.1f> (current %.2f)", MIN_SCALE, MAX_SCALE, scaleX))
+      return
+    end
+    if val < MIN_SCALE then val = MIN_SCALE end
+    if val > MAX_SCALE then val = MAX_SCALE end
+    scaleX = val
+    FSRTrackerDB.scalex = scaleX
+    RefreshDimensions()
+    print(string.format("|cff66ccffFSR|r scalex set to %.2f (width stretch).", scaleX))
+
+  elseif msg:match("^scaley%s") or msg == "scaley" then
+    local val = tonumber(msg:match("^scaley%s+([%d%.]+)"))
+    if not val then
+      print(string.format("|cff66ccffFSR|r usage: /fsr scaley <%.1f–%.1f> (current %.2f)", MIN_SCALE, MAX_SCALE, scaleY))
+      return
+    end
+    if val < MIN_SCALE then val = MIN_SCALE end
+    if val > MAX_SCALE then val = MAX_SCALE end
+    scaleY = val
+    FSRTrackerDB.scaley = scaleY
+    RefreshDimensions()
+    print(string.format("|cff66ccffFSR|r scaley set to %.2f (height stretch).", scaleY))
 
   elseif msg:match("^hidebg") then
-    -- /fsr hidebg (toggle)  |  /fsr hidebg on|off
     local arg = msg:match("^hidebg%s+(%S+)")
-    if arg == "on" then
-      hideBG = true
-    elseif arg == "off" then
-      hideBG = false
-    else
-      hideBG = not hideBG
-    end
+    if arg == "on" then hideBG = true
+    elseif arg == "off" then hideBG = false
+    else hideBG = not hideBG end
     FSRTrackerDB.hideBG = hideBG
     ApplyHideBG()
     print("|cff66ccffFSR|r background "..(hideBG and "hidden (spark only)." or "shown."))
@@ -412,11 +463,13 @@ SlashCmdList["FSR"] = function(msg)
     print("|cff66ccffFSR|r commands:")
     print("  |cffffffff/fsr unlock|r — unlock & show preview (drag to move)")
     print("  |cffffffff/fsr lock|r — lock & hide (when idle)")
-    print("  |cffffffff/fsr scale <"..MIN_SCALE.."–"..MAX_SCALE..">|r — set scale")
     print("  |cffffffff/fsr center|r — center horizontally")
-    print("  |cffffffff/fsr reset|r — reset position & scale")
-    print("  |cffffffff/fsr hidebg [on|off]|r — toggle spark-only mode")
+    print("  |cffffffff/fsr reset|r — reset position and ALL scales")
     print("  |cffffffff/fsr front|r — bring the bar above other UI")
+    print("  |cffffffff/fsr scale <"..MIN_SCALE.."–"..MAX_SCALE..">|r — uniform scale")
+    print("  |cffffffff/fsr scalex <"..MIN_SCALE.."–"..MAX_SCALE..">|r — width stretch")
+    print("  |cffffffff/fsr scaley <"..MIN_SCALE.."–"..MAX_SCALE..">|r — height stretch")
+    print("  |cffffffff/fsr hidebg [on|off]|r — toggle spark-only mode")
     print("  |cffffffff/fsr test|r — show a test sweep")
     print("  |cffffffff/fsr debug|r — toggle debug prints")
   end
