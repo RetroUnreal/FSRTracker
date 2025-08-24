@@ -11,7 +11,6 @@ Using it for other 3.3.5 servers will require you to add the missing Wrath spell
 Keep in mind that some of them are named differently on Project-Epoch as well.\
 You can add the missing spells under your class in the same way as explained below, just make sure its the same structure with a ";" in between them, except for at the end of a line.
 
-  -- Your class\
   add("Your Spell Name Here"); add("Your Spell Name Here") <--- No ; at the end of the line.
   
 Commands:\
