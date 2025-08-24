@@ -1,8 +1,9 @@
 ## Interface: 30300
 ## Title: FSRTracker
 ## Author: RetroUnreal / Bhop
-## Version: 1.0.2
+## Version: 1.0.3
 ## SavedVariablesPerCharacter: FSRTrackerDB
 
 FSRTracker.lua
+
 
