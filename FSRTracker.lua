@@ -376,12 +376,18 @@ f:SetScript("OnEvent", function(_, event, unit, arg2, arg3, arg4, arg5)
   if unit ~= "player" then return end
   DebugSpellEvent(event, unit, arg2, arg3, arg4, arg5)
 
-  if event == "UNIT_SPELLCAST_SENT" then
-    MaybeTriggerFSR(arg2)
-  elseif event == "UNIT_SPELLCAST_START" then
-    MaybeTriggerFSR(UnitCastingInfo("player"))
+  -- Start the 5s sweep ONLY when a spell actually succeeds.
+  if event == "UNIT_SPELLCAST_SUCCEEDED" then
+    MaybeTriggerFSR(arg2)  -- arg2 = spell name
   end
+
+  -- If you find a server/core where channeled spells don't fire SUCCEEDED,
+  -- you can optionally treat channel end as "success" too:
+  -- if event == "UNIT_SPELLCAST_CHANNEL_STOP" then
+  --   MaybeTriggerFSR(arg2)
+  -- end
 end)
+
 
 -- mana tick & full detection (read true mana, not current power)
 local manaFrame = CreateFrame("Frame")
