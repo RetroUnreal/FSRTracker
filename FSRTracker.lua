@@ -22,6 +22,7 @@ local scaleY         = 1.0     -- height multiplier (SetSize)
 local hideBG         = false   -- hide background & fill, spark only
 local savedStrata    = "MEDIUM"
 local savedLevel     = nil
+local showCD         = false   -- COUNTDOWN TEXT TOGGLED OFF BY DEFAULT
 
 -- Per-character SavedVariables
 FSRTrackerDB = FSRTrackerDB or {}
@@ -31,6 +32,7 @@ if tonumber(FSRTrackerDB.scaley) then scaleY   = tonumber(FSRTrackerDB.scaley) e
 if type(FSRTrackerDB.hideBG) == "boolean" then hideBG = FSRTrackerDB.hideBG end
 if type(FSRTrackerDB.strata) == "string"  then savedStrata = FSRTrackerDB.strata end
 if tonumber(FSRTrackerDB.level) then savedLevel = tonumber(FSRTrackerDB.level) end
+if type(FSRTrackerDB.cd) == "boolean" then showCD = FSRTrackerDB.cd end
 
 ----------------------------------
 -- Safe debug print
@@ -50,7 +52,6 @@ local function GetPlayerMana()
   if hasUnitPower then
     return (UnitPower("player", 0) or 0), (UnitPowerMax("player", 0) or 0)
   else
-    -- fallback (older cores): may return current power type; best available
     return (UnitMana("player") or 0), (UnitManaMax("player") or 0)
   end
 end
@@ -177,6 +178,20 @@ local spark = bar:CreateTexture(nil, "OVERLAY")
 spark:SetTexture("Interface\\CastingBar\\UI-CastingBar-Spark")
 spark:SetBlendMode("ADD")
 
+-- countdown text (hidden by default)
+local cdText = bar:CreateFontString(nil, "OVERLAY")
+cdText:ClearAllPoints()
+cdText:SetPoint("CENTER", bar, "CENTER", 0, 0)  -- << inside the bar
+cdText:SetDrawLayer("OVERLAY", 1)               -- above the spark
+cdText:SetJustifyH("CENTER"); cdText:SetJustifyV("MIDDLE")
+cdText:SetTextColor(1, 1, 1, 0.95)
+cdText:SetShadowColor(0, 0, 0, 0.9)
+cdText:SetShadowOffset(1, -1)
+cdText:Hide()
+
+-- own font so we can resize with height without double-scaling on SetScale()
+local cdFont = CreateFont("FSR_CD_Font")
+
 -- track current fill color and apply hideBG safely
 local curR, curG, curB, curA = 0, 0.5, 1, 1
 local function ApplyHideBG()
@@ -197,12 +212,23 @@ local function RefreshDimensions()
   local w = BASE_W * scaleX
   local h = BASE_H * scaleY
   bar:SetSize(w, h)
+
   -- spark size: keep slim, scale height with bar
   local sparkH = math.max(h * 2, 8)
   spark:SetSize(BASE_SPARK_W, sparkH)
-  -- ensure spark is anchored correctly
   spark:ClearAllPoints()
   spark:SetPoint("CENTER", bar, "LEFT", 0, 0)
+
+  -- countdown font: scale with bar *height* (we don't include barScale here,
+  -- because the whole bar (and children) already gets scaled by SetScale()).
+  local px = math.max(10, math.floor(12 * scaleY))
+  cdFont:SetFont(STANDARD_TEXT_FONT, px, "OUTLINE")
+  cdText:SetFontObject(cdFont)
+
+  -- countdown font: scale with bar *height* (no double-scaling via SetScale())
+  local px = math.max(12, math.floor((BASE_H * scaleY) * 0.9))
+  cdFont:SetFont(STANDARD_TEXT_FONT, px, "OUTLINE")
+  cdText:SetFontObject(cdFont)
 end
 
 -- drag support
@@ -230,10 +256,35 @@ local function UpdateSpark()
   spark:SetPoint("CENTER", bar, "LEFT", width * percent, 0)
 end
 
+local function UpdateCountdown(now)
+  if not showCD then return end
+  if not bar:IsShown() then cdText:Hide(); return end
+
+  local dt = now - lastCastTime
+  local remaining
+
+  if tracking and dt <= FSR_DURATION then
+    remaining = math.max(0, FSR_DURATION - dt)
+  elseif tracking and firstTickSeen then
+    local since = now - tickStart
+    remaining = TICK_INTERVAL - (since % TICK_INTERVAL)
+  else
+    remaining = nil
+  end
+
+  if remaining then
+    cdText:SetText(string.format("%.1f", remaining))
+    cdText:Show()
+  else
+    cdText:Hide()
+  end
+end
+
 local function StopFSR(self)
   tracking      = false
   firstTickSeen = false
   bar:Hide()
+  cdText:Hide()
   if self then self:SetScript("OnUpdate", nil) end
 end
 
@@ -248,6 +299,7 @@ local function StartFSR()
   bar:SetValue(0)
   SetBarColor(0, 0.5, 1, 1) -- blue
   bar:Show()
+  if showCD then cdText:Show() end
 
   f:SetScript("OnUpdate", function(self, elapsed)
     if not tracking then return end
@@ -272,6 +324,7 @@ local function StartFSR()
     end
 
     UpdateSpark()
+    UpdateCountdown(now)
   end)
 end
 
@@ -295,7 +348,7 @@ local function DebugSpellEvent(event, unit, a2, a3, a4, a5)
   if not debugPrint or unit ~= "player" then return end
   local name
   if event == "UNIT_SPELLCAST_SENT" then
-    name = a2 -- spellName
+    name = a2
   elseif event == "UNIT_SPELLCAST_START" then
     name = UnitCastingInfo(unit)
   elseif event == "UNIT_SPELLCAST_CHANNEL_START" then
@@ -381,11 +434,13 @@ boot:SetScript("OnEvent", function(self, event, arg1)
     if type(FSRTrackerDB.hideBG) == "boolean" then hideBG = FSRTrackerDB.hideBG else hideBG = false end
     if type(FSRTrackerDB.strata) == "string" then savedStrata = FSRTrackerDB.strata else savedStrata = "MEDIUM" end
     if tonumber(FSRTrackerDB.level) then savedLevel = tonumber(FSRTrackerDB.level) else savedLevel = nil end
+    if type(FSRTrackerDB.cd) == "boolean" then showCD = FSRTrackerDB.cd else showCD = false end
 
     RefreshDimensions()
     bar:SetFrameStrata(savedStrata or "MEDIUM")
     if savedLevel then bar:SetFrameLevel(savedLevel) end
     ApplyHideBG()
+    if not showCD then cdText:Hide() end
 
   elseif event == "PLAYER_LOGIN" then
     local ver = GetAddOnMetadata(ADDON_NAME or "FSRTracker", "Version") or GetAddOnMetadata("FSRTracker", "Version") or ""
@@ -418,12 +473,13 @@ SlashCmdList["FSR"] = function(msg)
     bar:SetValue(0)
     SetBarColor(0, 0.5, 1, 0.9)
     bar:Show()
+    if showCD then cdText:SetText("5.0"); cdText:Show() end
     print("|cff66ccffFSR|r bar UNLOCKED. Drag to move. Use /fsr lock when done.")
 
   elseif msg == "lock" then
     bar.isUnlocked = false
     bar:EnableMouse(false)
-    if not tracking then bar:Hide() end
+    if not tracking then bar:Hide(); cdText:Hide() end
     print("|cff66ccffFSR|r bar LOCKED. Use /fsr unlock to move it again.")
 
   elseif msg == "reset" then
@@ -499,6 +555,15 @@ SlashCmdList["FSR"] = function(msg)
     ApplyHideBG()
     print("|cff66ccffFSR|r background "..(hideBG and "hidden (spark only)." or "shown."))
 
+  elseif msg:match("^cd") then
+    local arg = msg:match("^cd%s+(%S+)")
+    if arg == "on" then showCD = true
+    elseif arg == "off" then showCD = false
+    else showCD = not showCD end
+    FSRTrackerDB.cd = showCD
+    if showCD and (bar:IsShown() or bar.isUnlocked) then cdText:Show() else cdText:Hide() end
+    print("|cff66ccffFSR|r countdown "..(showCD and "enabled." or "disabled."))
+
   else
     print("|cff66ccffFSR|r commands:")
     print("  |cff66ccff/fsr unlock|r — unlock & show preview (drag to move)")
@@ -510,6 +575,7 @@ SlashCmdList["FSR"] = function(msg)
     print("  |cff66ccff/fsr scalex <"..MIN_SCALE.."–"..MAX_SCALE..">|r — width stretch")
     print("  |cff66ccff/fsr scaley <"..MIN_SCALE.."–"..MAX_SCALE..">|r — height stretch")
     print("  |cff66ccff/fsr hidebg [on|off]|r — toggle spark-only mode")
+    print("  |cff66ccff/fsr cd [on|off]|r — toggle numeric countdown on bar")
     print("  |cff66ccff/fsr test|r — show a test sweep")
     print("  |cff66ccff/fsr debug|r — toggle debug prints (also prints spell events)")
   end
