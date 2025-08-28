@@ -219,17 +219,12 @@ local function RefreshDimensions()
   spark:ClearAllPoints()
   spark:SetPoint("CENTER", bar, "LEFT", 0, 0)
 
-  -- countdown font: scale with bar *height* (we don't include barScale here,
-  -- because the whole bar (and children) already gets scaled by SetScale()).
-  local px = math.max(10, math.floor(12 * scaleY))
-  cdFont:SetFont(STANDARD_TEXT_FONT, px, "OUTLINE")
-  cdText:SetFontObject(cdFont)
-
-  -- countdown font: scale with bar *height* (no double-scaling via SetScale())
-  local px = math.max(12, math.floor((BASE_H * scaleY) * 0.9))
+  -- countdown font: scale with the bar height (no double-scaling via SetScale())
+  local px = math.max(12, math.floor(h * 0.9))
   cdFont:SetFont(STANDARD_TEXT_FONT, px, "OUTLINE")
   cdText:SetFontObject(cdFont)
 end
+
 
 -- drag support
 bar:SetMovable(true)
@@ -490,6 +485,12 @@ SlashCmdList["FSR"] = function(msg)
     FSRTrackerDB.scalex = scaleX
     FSRTrackerDB.scaley = scaleY
     RefreshDimensions()
+
+    -- NEW: ensure background is turned back on
+    hideBG = false
+    FSRTrackerDB.hideBG = false
+    ApplyHideBG()
+
     print("|cff66ccffFSR|r bar reset to default position and scale 1.0 (scalex=1.0, scaley=1.0).")
 
   elseif msg == "center" then
@@ -546,8 +547,8 @@ SlashCmdList["FSR"] = function(msg)
     RefreshDimensions()
     print(string.format("|cff66ccffFSR|r scaley set to %.2f (height stretch).", scaleY))
 
-  elseif msg:match("^hidebg") then
-    local arg = msg:match("^hidebg%s+(%S+)")
+  elseif msg:match("^bg") then
+    local arg = msg:match("^bg%s+(%S+)")
     if arg == "on" then hideBG = true
     elseif arg == "off" then hideBG = false
     else hideBG = not hideBG end
@@ -574,7 +575,7 @@ SlashCmdList["FSR"] = function(msg)
     print("  |cff66ccff/fsr scale <"..MIN_SCALE.."–"..MAX_SCALE..">|r — uniform scale")
     print("  |cff66ccff/fsr scalex <"..MIN_SCALE.."–"..MAX_SCALE..">|r — width stretch")
     print("  |cff66ccff/fsr scaley <"..MIN_SCALE.."–"..MAX_SCALE..">|r — height stretch")
-    print("  |cff66ccff/fsr hidebg [on|off]|r — toggle spark-only mode")
+    print("  |cff66ccff/fsr bg [on|off]|r — toggle spark-only mode")
     print("  |cff66ccff/fsr cd [on|off]|r — toggle numeric countdown on bar")
     print("  |cff66ccff/fsr test|r — show a test sweep")
     print("  |cff66ccff/fsr debug|r — toggle debug prints (also prints spell events)")
