@@ -27,7 +27,9 @@ Commands:\
 
 /fsr center — (Centers FSRTracker horizontally)
 
-/fsr hidebg — (Toggles the bar background on/off, only show the spark/line)
+/fsr bg — (Toggles the bar background on/off, only show the spark/line)
+
+/fsr cd — (Toggles numeric countdown on bar on/off)
 
 /fsr front — (Changes FSRTracker's priority it has over other UI Elements to MAX, so you can display it over your Unit Frame for example.)
 
