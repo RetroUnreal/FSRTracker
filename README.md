@@ -33,4 +33,8 @@ Commands:\
 
 /fsr front — (Changes FSRTracker's priority it has over other UI Elements to MAX, so you can display it over your Unit Frame for example.)
 
+/fsr strata <BACKGROUND|LOW|MEDIUM|HIGH|DIALOG|FULLSCREEN|FULLSCREEN_DIALOG|TOOLTIP> — (More commands for strata if "/fsr front" still doesn't make it draw over your mana bar, but "TOOLTIP" should already be the highest.)
+
+/fsr level <0-20000> — (Finetune command for level if "/fsr front" still doesn't make it draw over your mana bar.)
+
 /fsr reset — (Resets FSRTracker completely, back to factory settings xd)
