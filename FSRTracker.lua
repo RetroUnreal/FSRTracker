@@ -455,6 +455,28 @@ end)
 ----------------------------------
 -- Slash commands
 ----------------------------------
+local function norm_strata(s)
+  if not s or s == "" then return nil end
+  s = string.upper(s)
+  if s == "BG" or s == "BACKGROUND" then return "BACKGROUND" end
+  if s == "LOW" then return "LOW" end
+  if s == "MED" or s == "MEDIUM" then return "MEDIUM" end
+  if s == "HIGH" then return "HIGH" end
+  if s == "DIALOG" then return "DIALOG" end
+  if s == "FS" or s == "FULLSCREEN" then return "FULLSCREEN" end
+  if s == "FSD" or s == "FULLSCREEN_DIALOG" then return "FULLSCREEN_DIALOG" end
+  if s == "TOP" or s == "TOOLTIP" then return "TOOLTIP" end
+  return nil
+end
+
+local function clamp_level(n)
+  n = tonumber(n)
+  if not n then return nil end
+  if n < 0 then n = 0 end
+  if n > 20000 then n = 20000 end  -- plenty high
+  return math.floor(n + 0.5)
+end
+
 SLASH_FSR1 = "/fsr"
 SlashCmdList["FSR"] = function(msg)
   msg = (msg or ""):lower():match("^%s*(.-)%s*$")
@@ -512,6 +534,38 @@ SlashCmdList["FSR"] = function(msg)
     FSRTrackerDB.strata = "TOOLTIP"
     FSRTrackerDB.level  = 100
     print("|cff66ccffFSR|r bar brought to front (strata=TOOLTIP, level=100).")
+
+  elseif msg:match("^strata") then
+    local arg = msg:match("^strata%s+(%S+)")
+    if not arg then
+      print("|cff66ccffFSR|r current strata: "..(bar:GetFrameStrata() or "?"))
+      print("|cff66ccffFSR|r usage: /fsr strata BACKGROUND|LOW|MEDIUM|HIGH|DIALOG|FULLSCREEN|FULLSCREEN_DIALOG|TOOLTIP")
+    else
+      local s = norm_strata(arg)
+      if not s then
+        print("|cff66ccffFSR|r unknown strata '"..arg.."'.")
+      else
+        bar:SetFrameStrata(s)
+        FSRTrackerDB.strata = s
+        print("|cff66ccffFSR|r strata set to "..s..".")
+      end
+    end
+
+  elseif msg:match("^level") then
+    local arg = msg:match("^level%s+(%S+)")
+    if not arg then
+      print("|cff66ccffFSR|r current level: "..tostring(bar:GetFrameLevel()))
+      print("|cff66ccffFSR|r usage: /fsr level <0–20000>")
+    else
+      local lvl = clamp_level(arg)
+      if not lvl then
+        print("|cff66ccffFSR|r usage: /fsr level <0–20000>")
+      else
+        bar:SetFrameLevel(lvl)
+        FSRTrackerDB.level = lvl
+        print("|cff66ccffFSR|r frame level set to "..lvl..".")
+      end
+    end
 
   elseif msg:match("^scale%s") or msg == "scale" then
     local val = tonumber(msg:match("^scale%s+([%d%.]+)"))
@@ -577,7 +631,9 @@ SlashCmdList["FSR"] = function(msg)
     print("  |cff66ccff/fsr lock|r — lock & hide (when idle)")
     print("  |cff66ccff/fsr center|r — center horizontally")
     print("  |cff66ccff/fsr reset|r — reset position and ALL scales")
-    print("  |cff66ccff/fsr front|r — bring the bar above other UI")
+    print("  |cff66ccff/fsr front|r — bring the bar above other UI (TOOLTIP/100)")
+    print("  |cff66ccff/fsr strata <name>|r — BACKGROUND|LOW|MEDIUM|HIGH|DIALOG|FULLSCREEN|FULLSCREEN_DIALOG|TOOLTIP")
+    print("  |cff66ccff/fsr level <0–20000>|r — set frame level within the strata")
     print("  |cff66ccff/fsr scale <"..MIN_SCALE.."–"..MAX_SCALE..">|r — uniform scale")
     print("  |cff66ccff/fsr scalex <"..MIN_SCALE.."–"..MAX_SCALE..">|r — width stretch")
     print("  |cff66ccff/fsr scaley <"..MIN_SCALE.."–"..MAX_SCALE..">|r — height stretch")
