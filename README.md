@@ -15,6 +15,8 @@ You can add the missing spells under your class in the same way as explained bel
   add("Your Spell Name Here"); add("Your Spell Name Here") <--- No ; at the end of the line.
   
 Commands:\
+/fsr — Shows all commands and their intended usage.
+
 /fsr scale <0.5–3.0> — Sets the total scale of FSRTracker, Default: 1.0.
 
 /fsr scalex <0.5–3.0> — Sets the horizontal stretch (width) of FSRTracker, Default: 1.0
