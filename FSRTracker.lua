@@ -56,6 +56,140 @@ local function GetPlayerMana()
   end
 end
 
+-- === Buff helpers (3.3.5-safe, locale-safe) ===
+local function PlayerHasBuff(name)
+  for i = 1, 40 do
+    local n = UnitBuff("player", i)
+    if not n then break end
+    if n == name then return true end
+  end
+  return false
+end
+
+-- Localized buff names (fallback to English if spellId not found)
+local BUFF_EVOCATION  = (GetSpellInfo(12051)) or "Evocation"
+local BUFF_INNERVATE  = (GetSpellInfo(29166)) or "Innervate"
+local BUFF_DIVINEPLEA = (GetSpellInfo(54428)) or "Divine Plea"
+
+local function IsEvocating()  return PlayerHasBuff(BUFF_EVOCATION) end
+local function IsInnervated()  return PlayerHasBuff(BUFF_INNERVATE) end
+
+-- "Drinking" shows as a few names on 3.3.5; cover the common ones.
+local function IsDrinking()
+  for i = 1, 40 do
+    local n = UnitBuff("player", i)
+    if not n then break end
+    if n == "Drink" or n == "Drinking" or n == "Food and Drink" then
+      return true
+    end
+  end
+  return false
+end
+
+----------------------------------------------------------------
+-- 2-sec tick detector (3.3.5-safe)
+----------------------------------------------------------------
+local FSR = {
+  gaining       = true,   -- allowed to gain (5s rule finished)
+  resumeAt      = 0,      -- when 5s rule ends (GetTime())
+  lastTickAt    = 0,      -- last ACCEPTED tick time
+  baseline      = 0,      -- expected tick size (2s), adaptive
+}
+
+local function FSR_SeedBaseline()
+  if type(GetManaRegen) == "function" then
+    local notCastingPerSec = select(1, GetManaRegen())
+    if notCastingPerSec and notCastingPerSec > 0 then
+      FSR.baseline = notCastingPerSec * 2
+    end
+  end
+  if FSR.baseline == 0 then FSR.baseline = 20 end -- harmless fallback
+end
+FSR_SeedBaseline()
+
+local function FSR_EnterFiveSecondRule()
+  FSR.gaining  = false
+  FSR.resumeAt = GetTime() + 5
+end
+
+local function FSR_FiveSecondGate(now)
+  if not FSR.gaining and now >= FSR.resumeAt then
+    FSR.gaining, FSR.resumeAt = true, 0
+  end
+  return FSR.gaining
+end
+
+-- ----- special regen classifier (Wrath 3.3.5-safe, locale-safe) -----
+local BUFF_MANATIDE      = (GetSpellInfo(16191)) or "Mana Tide"
+local BUFF_REPLENISHMENT = (GetSpellInfo(57669)) or "Replenishment"
+
+local function FSR_SpecialRegenState()
+  local s = { evocation=false, innervate=false, divinePlea=false, manaTide=false, replen=false, drink=false }
+  for i = 1, 40 do
+    local name = UnitBuff("player", i)
+    if not name then break end
+    if name == BUFF_EVOCATION then s.evocation = true
+    elseif name == BUFF_INNERVATE then s.innervate = true
+    elseif name == BUFF_DIVINEPLEA then s.divinePlea = true
+    elseif name == BUFF_MANATIDE or name == "Mana Tide Totem" then s.manaTide = true
+    elseif name == BUFF_REPLENISHMENT then s.replen = true
+    elseif name == "Drink" or name == "Drinking" or name == "Food and Drink" then s.drink = true
+    end
+  end
+  return s
+end
+
+local function FSR_SizeWindow()
+  local base = math.max(4, FSR.baseline)
+  local low, high = base * 0.65, base * 1.35   -- spirit-only tolerance
+  if FSR.gaining then
+    high = base * 2.2                          -- allow Spirit + mp5 after 5SR
+  end
+  return low, high
+end
+
+-- Returns (isRealTick, effectiveTickSize, shouldAdaptBaseline)
+local function FSR_IsRealTick(delta, now)
+  local s = FSR_SpecialRegenState()
+
+  -- Gate policy: ONLY Evocation may bypass the 5s rule.
+  -- Drink/Innervate do NOT bypass; they must wait for FSR_FiveSecondGate.
+  local gateOpen = FSR_FiveSecondGate(now) or s.evocation
+  if not gateOpen then return false end
+
+  -- 2s cadence check (accept a merged 4s on lag)
+  local dt    = (FSR.lastTickAt > 0) and (now - FSR.lastTickAt) or 2.0
+  local near2 = (dt > 1.4 and dt < 2.6)
+  local near4 = (dt >= 3.4 and dt < 4.6)
+  if not (near2 or near4) then return false end
+
+  -- While Evo/Innervate/Drink are active (post-gate), accept by cadence only.
+  local skipSize  = s.evocation or s.innervate or s.drink
+  local effective = near4 and (delta * 0.5) or delta
+
+  if not skipSize then
+    -- Size window filters out DP/Mana Tide/Replenishment and other non-FSR sources
+    local low, high = FSR_SizeWindow()
+    if effective < low or effective > high then return false end
+  end
+
+  -- Don’t adapt baseline while Evo/Innervate/Drink are boosting regen
+  local adapt = not (s.evocation or s.innervate or s.drink)
+  return true, effective, adapt
+end
+
+local function FSR_OnManaGain(delta)
+  local now = GetTime()
+  local ok, effSz, adapt = FSR_IsRealTick(delta, now)
+  if not ok then return false end
+  if adapt then
+    local a = 0.30
+    FSR.baseline = (FSR.baseline == 0) and effSz or (FSR.baseline * (1-a) + effSz * a)
+  end
+  FSR.lastTickAt = now
+  return true
+end
+
 ----------------------------------
 -- Trigger spell set (lowercased)
 ----------------------------------
@@ -275,12 +409,13 @@ local function UpdateCountdown(now)
   end
 end
 
-local function StopFSR(self)
+local function StopFSR()
   tracking      = false
   firstTickSeen = false
   bar:Hide()
   cdText:Hide()
-  if self then self:SetScript("OnUpdate", nil) end
+  FSR.lastTickAt = 0
+  f:SetScript("OnUpdate", nil)
 end
 
 local function StartFSR()
@@ -289,6 +424,12 @@ local function StartFSR()
   firstTickSeen = false
   tickStart     = 0
   lastMana      = (GetPlayerMana())
+
+  -- RESET the last accepted tick so the next run can accept the first post-5s gain
+  FSR.lastTickAt = 0
+
+  -- begin the 5-second rule gate (we only call StartFSR on SUCCEEDED casts)
+  FSR_EnterFiveSecondRule()
 
   bar:SetMinMaxValues(0, FSR_DURATION)
   bar:SetValue(0)
@@ -388,7 +529,6 @@ f:SetScript("OnEvent", function(_, event, unit, arg2, arg3, arg4, arg5)
   -- end
 end)
 
-
 -- mana tick & full detection (read true mana, not current power)
 local manaFrame = CreateFrame("Frame")
 manaFrame:RegisterEvent("UNIT_MANA")
@@ -397,26 +537,57 @@ manaFrame:RegisterEvent("PLAYER_ENTERING_WORLD")
 manaFrame:SetScript("OnEvent", function(self, event, unit)
   if event == "PLAYER_ENTERING_WORLD" then
     lastMana = (GetPlayerMana())
+    FSR_SeedBaseline()
     return
   end
   if unit ~= "player" then return end
 
   local current, max = GetPlayerMana()
+  local now   = GetTime()
+  local delta = current - lastMana
 
+  -- Stop when full.
   if tracking and max > 0 and current >= max then
     dprint("Mana full -> stop.")
     StopFSR(self)
+    lastMana = current
+    return
   end
 
-  if tracking and not firstTickSeen and (GetTime() - lastCastTime) > FSR_DURATION then
-    if current > lastMana then
+  -- Only consider +mana while waiting for the first tick.
+  if delta > 0 and tracking and not firstTickSeen then
+    if FSR_OnManaGain(delta) then
       firstTickSeen = true
-      tickStart     = GetTime()
-      dprint("First mana tick at +", string.format("%.2f", tickStart - lastCastTime), "s")
+      tickStart     = now
+      dprint(string.format("First clean mana tick at + %.2f s (Δ=%d)", now - lastCastTime, delta))
+    else
+      dprint("Ignored non-2s mana source while waiting for first tick.")
     end
   end
 
   lastMana = current
+end)
+
+-- Pause pulses when Evo/Innervate end in combat; resync on next accepted tick.
+local auraWatcher = CreateFrame("Frame")
+auraWatcher:RegisterEvent("UNIT_AURA")
+local hadEvo, hadInn = false, false
+
+auraWatcher:SetScript("OnEvent", function(_, _, u)
+  if u ~= "player" or not tracking then return end
+  local s = FSR_SpecialRegenState()
+  -- if either aura just fell off, pause pulses and wait for a fresh real tick
+  if (hadEvo and not s.evocation) or (hadInn and not s.innervate) then
+    if UnitAffectingCombat("player") then
+      firstTickSeen = false
+      FSR.lastTickAt = 0
+      bar:SetMinMaxValues(0, TICK_INTERVAL)
+      bar:SetValue(0)
+      SetBarColor(0, 1, 0, 0.6)
+      dprint("Special regen ended -> pausing pulses to resync on next real tick.")
+    end
+  end
+  hadEvo, hadInn = s.evocation, s.innervate
 end)
 
 ----------------------------------
@@ -446,7 +617,7 @@ boot:SetScript("OnEvent", function(self, event, arg1)
   elseif event == "PLAYER_LOGIN" then
     local ver = GetAddOnMetadata(ADDON_NAME or "FSRTracker", "Version") or GetAddOnMetadata("FSRTracker", "Version") or ""
     local verText = (ver ~= "" and (" v" .. ver) or "")
-    DEFAULT_CHAT_FRAME:AddMessage("|cff66ccffFSRTracker|r"..verText.." loaded — by |cffa335eeRetroUnreal|r aka |cffa335eeBhop|r. Type |cff66ccff/fsr|r for commands.")
+    DEFAULT_CHAT_FRAME:AddMessage("|cff66ccffFSRTracker|r"..verText.." loaded — by |cffa335eeRetroUnreal|r aka |cffa335eeBhop|r. Type |cff66ccff/fsr|r for commands. Let me know of any issues.")
     self:UnregisterEvent("PLAYER_LOGIN")
     self:UnregisterEvent("ADDON_LOADED")
   end
