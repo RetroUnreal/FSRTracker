@@ -94,6 +94,7 @@ local FSR = {
   resumeAt      = 0,      -- when 5s rule ends (GetTime())
   lastTickAt    = 0,      -- last ACCEPTED tick time
   baseline      = 0,      -- expected tick size (2s), adaptive
+  failCount     = 0,
 }
 
 local function FSR_SeedBaseline()
@@ -148,45 +149,104 @@ local function FSR_SizeWindow()
   return low, high
 end
 
--- Returns (isRealTick, effectiveTickSize, shouldAdaptBaseline)
+-- Returns (isRealTick, effectiveTickSize, shouldAdaptBaseline, reason, infoTbl)
 local function FSR_IsRealTick(delta, now)
-  local s = FSR_SpecialRegenState()
+  local s        = FSR_SpecialRegenState()
+  local inCombat = UnitAffectingCombat("player")
 
-  -- Gate policy: ONLY Evocation may bypass the 5s rule.
-  -- Drink/Innervate do NOT bypass; they must wait for FSR_FiveSecondGate.
+  -- Only Evocation can bypass the 5s gate
   local gateOpen = FSR_FiveSecondGate(now) or s.evocation
-  if not gateOpen then return false end
+  if not gateOpen then
+    return false, nil, nil, "gate-closed", {evoc=s.evocation}
+  end
 
-  -- 2s cadence check (accept a merged 4s on lag)
+  -- Cadence check (accept merged 4s on lag)
   local dt    = (FSR.lastTickAt > 0) and (now - FSR.lastTickAt) or 2.0
   local near2 = (dt > 1.4 and dt < 2.6)
   local near4 = (dt >= 3.4 and dt < 4.6)
-  if not (near2 or near4) then return false end
-
-  -- While Evo/Innervate/Drink are active (post-gate), accept by cadence only.
-  local skipSize  = s.evocation or s.innervate or s.drink
-  local effective = near4 and (delta * 0.5) or delta
-
-  if not skipSize then
-    -- Size window filters out DP/Mana Tide/Replenishment and other non-FSR sources
-    local low, high = FSR_SizeWindow()
-    if effective < low or effective > high then return false end
+  if not (near2 or near4) then
+    return false, nil, nil, "bad-cadence", {dt=dt}
   end
 
-  -- Don’t adapt baseline while Evo/Innervate/Drink are boosting regen
+  -- During Evo/Innervate/Drink(OOC) we care about cadence only; skip size window
+  local skipSize = s.evocation or s.innervate or (s.drink and not inCombat)
+
+  local effective = near4 and (delta * 0.5) or delta
+  if not skipSize then
+    local low, high = FSR_SizeWindow()
+
+    -- Forgive the first acceptance after gate
+    if FSR.lastTickAt == 0 then
+      low  = low  * 0.6
+      high = high * 1.8
+    end
+    -- If we already rejected a few, widen more
+    if (FSR.failCount or 0) >= 3 then
+      low  = low  * 0.5
+      high = high * 2.5
+    end
+
+    if effective < low or effective > high then
+      return false, effective, false, "out-of-window", {
+        eff=effective, low=low, high=high, base=FSR.baseline
+      }
+    end
+  end
+
+  -- Never adapt while big boosters are up (ignore Drink both in/out of combat)
   local adapt = not (s.evocation or s.innervate or s.drink)
-  return true, effective, adapt
+
+  return true, effective, adapt, "ok", {
+    dt=dt, skipSize=skipSize, evoc=s.evocation, inn=s.innervate, drink=s.drink
+  }
 end
 
 local function FSR_OnManaGain(delta)
   local now = GetTime()
-  local ok, effSz, adapt = FSR_IsRealTick(delta, now)
-  if not ok then return false end
+  local ok, effSz, adapt, reason, info = FSR_IsRealTick(delta, now)
+
+  if not ok then
+    FSR.failCount = (FSR.failCount or 0) + 1
+    if debugPrint then
+      local parts = {
+        "Rejected first tick:",
+        "reason="..tostring(reason),
+        "Δ="..tostring(delta),
+      }
+      if info then
+        if info.dt then table.insert(parts, string.format("dt=%.3f", info.dt)) end
+        if info.eff then table.insert(parts, "eff="..tostring(info.eff)) end
+        if info.low and info.high then
+          table.insert(parts, string.format("win=[%.1f..%.1f]", info.low, info.high))
+        end
+        if info.base then table.insert(parts, "base="..tostring(math.floor(info.base+0.5))) end
+        if info.skipSize ~= nil then table.insert(parts, "skipSize="..tostring(info.skipSize)) end
+        if info.evoc then table.insert(parts, "Evo") end
+        if info.inn then table.insert(parts, "Inn") end
+        if info.drink then table.insert(parts, "Drink") end
+      end
+      dprint(table.concat(parts, " "))
+    end
+    return false
+  end
+
+  -- Accepted
+  FSR.failCount = 0
   if adapt then
     local a = 0.30
-    FSR.baseline = (FSR.baseline == 0) and effSz or (FSR.baseline * (1-a) + effSz * a)
+    FSR.baseline = (FSR.baseline == 0) and effSz
+                 or (FSR.baseline * (1 - a) + effSz * a)
   end
   FSR.lastTickAt = now
+
+  if debugPrint then
+    dprint(string.format(
+      "Accepted first tick: eff=%d adapt=%s base→%d",
+      effSz, tostring(adapt),
+      math.floor((FSR.baseline or 0) + 0.5)
+    ))
+  end
+
   return true
 end
 
@@ -427,6 +487,8 @@ local function StartFSR()
 
   -- RESET the last accepted tick so the next run can accept the first post-5s gain
   FSR.lastTickAt = 0
+  FSR.failCount = 0
+
 
   -- begin the 5-second rule gate (we only call StartFSR on SUCCEEDED casts)
   FSR_EnterFiveSecondRule()
@@ -534,12 +596,25 @@ local manaFrame = CreateFrame("Frame")
 manaFrame:RegisterEvent("UNIT_MANA")
 manaFrame:RegisterEvent("UNIT_MAXMANA")
 manaFrame:RegisterEvent("PLAYER_ENTERING_WORLD")
+manaFrame:RegisterEvent("PLAYER_LEVEL_UP")
 manaFrame:SetScript("OnEvent", function(self, event, unit)
   if event == "PLAYER_ENTERING_WORLD" then
     lastMana = (GetPlayerMana())
     FSR_SeedBaseline()
     return
   end
+
+  if event == "PLAYER_LEVEL_UP" then
+    local newLevel = tonumber(unit) or UnitLevel("player")
+    -- Clear adaptive state so the next accepted tick re-syncs cleanly
+    FSR.baseline   = 0
+    FSR.failCount  = 0
+    FSR.lastTickAt = 0
+    FSR_SeedBaseline()
+    dprint(string.format("Level up to %d -> baseline reseeded to ~%d.", newLevel or -1, math.floor((FSR.baseline or 0) + 0.5)))
+    return
+  end
+
   if unit ~= "player" then return end
 
   local current, max = GetPlayerMana()
@@ -549,19 +624,30 @@ manaFrame:SetScript("OnEvent", function(self, event, unit)
   -- Stop when full.
   if tracking and max > 0 and current >= max then
     dprint("Mana full -> stop.")
-    StopFSR(self)
+    StopFSR()
     lastMana = current
     return
   end
 
   -- Only consider +mana while waiting for the first tick.
-  if delta > 0 and tracking and not firstTickSeen then
-    if FSR_OnManaGain(delta) then
-      firstTickSeen = true
-      tickStart     = now
-      dprint(string.format("First clean mana tick at + %.2f s (Δ=%d)", now - lastCastTime, delta))
+  if tracking and not firstTickSeen and delta > 0 then
+    -- HARD GATE: do not even query the classifier until the 5s gate is open,
+    -- except Evocation (we want pulses during the channel).
+    local gateOpen = (now - lastCastTime) >= FSR_DURATION or IsEvocating()
+    if not gateOpen then
+      if debugPrint then
+        local left = math.max(0, FSR_DURATION - (now - lastCastTime))
+        dprint(string.format("5s gate active (%.2fs left), ignoring +%d mana.", left, delta))
+      end
+      -- Do NOT touch failCount here.
     else
-      dprint("Ignored non-2s mana source while waiting for first tick.")
+      if FSR_OnManaGain(delta) then
+        firstTickSeen = true
+        tickStart     = now
+        dprint(string.format("First clean mana tick at + %.2f s (Δ=%d)", now - lastCastTime, delta))
+      else
+        dprint("Ignored non-2s mana source while waiting for first tick.")
+      end
     end
   end
 
@@ -796,6 +882,18 @@ SlashCmdList["FSR"] = function(msg)
     if showCD and (bar:IsShown() or bar.isUnlocked) then cdText:Show() else cdText:Hide() end
     print("|cff66ccffFSR|r countdown "..(showCD and "enabled." or "disabled."))
 
+  elseif msg == "seed" then
+    local old = FSR.baseline or 0
+    -- Clear adaptive state so the next accepted tick re-syncs cleanly
+    FSR.failCount  = 0
+    FSR.lastTickAt = 0
+    -- (Do not touch firstTickSeen: we can seed while running)
+    FSR.baseline   = 0
+    FSR_SeedBaseline()
+    print(string.format("|cff66ccffFSR|r baseline reseeded to ~%d (was %d). Tip: use while not casting/drinking.",
+         math.floor((FSR.baseline or 0) + 0.5)))
+
+
   else
     print("|cff66ccffFSR|r commands:")
     print("  |cff66ccff/fsr unlock|r — unlock & show preview (drag to move)")
@@ -812,5 +910,6 @@ SlashCmdList["FSR"] = function(msg)
     print("  |cff66ccff/fsr cd [on|off]|r — toggle numeric countdown on bar")
     print("  |cff66ccff/fsr test|r — show a test sweep")
     print("  |cff66ccff/fsr debug|r — toggle debug prints (also prints spell events)")
+    print("  |cff66ccff/fsr seed|r — reseed baseline from current regen (use while not casting/drinking)")
   end
 end
