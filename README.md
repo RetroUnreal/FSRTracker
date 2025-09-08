@@ -15,13 +15,13 @@ You can add the missing spells under your class in the same way as explained bel
   add("Your Spell Name Here"); add("Your Spell Name Here") <--- No ; at the end of the line.
   
 # Commands:
-/fsr — Shows all commands and their intended usage.
+/fsr — (Shows all commands and their intended usage.)
 
-/fsr scale <0.5–3.0> — Sets the total scale of FSRTracker, Default: 1.0.
+/fsr scale <0.5–3.0> — (Sets the total scale of FSRTracker, Default: 1.0.)
 
-/fsr scalex <0.5–3.0> — Sets the horizontal stretch (width) of FSRTracker, Default: 1.0
+/fsr scalex <0.5–3.0> — (Sets the horizontal stretch (width) of FSRTracker, Default: 1.0)
 
-/fsr scaley <0.5–3.0> — Sets the vertical stretch (height) of FSRTracker, Default: 1.0
+/fsr scaley <0.5–3.0> — (Sets the vertical stretch (height) of FSRTracker, Default: 1.0)
 
 /fsr unlock — (Unlocks FSRTracker)
 
@@ -40,3 +40,5 @@ You can add the missing spells under your class in the same way as explained bel
 /fsr level <0-20000> — (Finetune command for level incase FSRT draws over something else you don't want, or if the level is still too low.)
 
 /fsr reset — (Resets FSRTracker completely, back to factory settings xd)
+
+/fsr seed — (reseed baseline from current regen (use while not casting/drinking))
